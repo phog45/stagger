@@ -1,0 +1,73 @@
+{
+
+  "manifest_version": 2,
+  "name": "StumbleBar by StumbleUpon",
+  "short_name": "StumbleBar",
+  "version": "11.313",
+  "homepage_url": "http://www.stumbleupon.com",
+  "author": "StumbleUpon",
+
+  "content_scripts": [{
+    "js": ["polyfill.js", "utils.js", "dragndrop.js", "bar.js"],
+    "css": ["bar.css"],
+    "matches": ["<all_urls>"],
+	"match_about_blank": true,
+    "all_frames": false,
+	"run_at": "document_end"
+  }],
+
+  "web_accessible_resources": [
+    "toolbar.html"
+  ],
+
+
+  "description": "Discover the best of the web",
+  "icons": {
+    "32":  "asset/Logo-128.png",
+    "48":  "asset/Logo-128.png",
+    "64":  "asset/Logo-128.png",
+    "128": "asset/Logo-128.png"
+  },
+
+  "applications": {
+    "gecko": {
+      "id": "discover@mix.com",
+      "strict_min_version": "52.0"
+    }
+  },
+
+  "permissions": [
+    "tabs",
+    "cookies",
+    "<all_urls>",
+    "storage"
+  ],
+
+  "browser_action": {
+    "default_icon": {
+     "32" : "asset/Logo-128.png"
+    },
+    "default_title": "StumbleBar by StumbleUpon"
+  },
+
+  "background": {
+	  "persistent": true,
+	  "scripts": [
+		  "guid.js",
+		  "polyfill.js",
+		  "utils.js",
+		  "config.js",
+		  "error.js",
+		  "cache.js",
+		  "cookie.js",
+		  "api_request.js",
+		  "api.js",
+		  "contactlist.js",
+		  "conversation.js",
+		  "stumbleuponapi.js",
+		  "page.js",
+		  "toolbarevent.js"
+	  ]
+  }
+
+}

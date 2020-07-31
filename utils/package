@@ -1,0 +1,163 @@
+#!/bin/bash
+#
+# Dependencies
+#
+# npm install -g svgo chrome-webstore-manager web-ext clean-css-cli
+# brew install imagemagick
+# brew install pcregrep  # OSX only
+
+this="$0"
+
+failed() {
+	set +e
+	local code="$?"
+	local line="$1"
+	local message="${2-""}"
+
+	echo "=== Packaging failed ==="
+	echo "Error ${code} on line ${line}:"
+	echo
+	echo "${message}"
+	echo "| $(cat "${this}" | sed $((line-2))'q;d')"
+	echo "| $(cat "${this}" | sed $((line-1))'q;d')"
+	echo "> $(cat "${this}" | sed $((line))'q;d')"
+	echo "| $(cat "${this}" | sed $((line+1))'q;d')"
+	echo "| $(cat "${this}" | sed $((line+2))'q;d')"
+
+	exit $code
+}
+
+trap 'failed ${LINENO}' ERR
+
+npm update
+npm install
+
+pcregrep 2>/dev/null || alias pcregrep=grep
+cat manifest.json | pcregrep -v -M '"applications"(.|\n)*?},' > /dev/null || failed ${LINENO} "pcregrep required: brew install pcre"
+
+
+set -ue -o errtrace -o pipefail
+
+
+PUSH_MOZILLA=${PUSH_MOZILLA-}
+PUSH_CHROME=${PUSH_CHROME-}
+
+pushd "$(dirname "$0")/../"
+
+rm -rf target
+mkdir -p target
+mkdir -p artifact
+
+
+echo
+echo "== Add tracked files to build"
+git ls-tree -r master --name-only | egrep -v '^(utils/|asset/|.*\.md)' | while read FILE; do
+	# Create missing directories
+	if [[ "$(echo "$FILE" | grep /)" ]]; then mkdir -p "target/$(dirname "$FILE")"; fi
+
+	cp -rp {,target/}"$FILE"
+done
+
+
+echo
+echo "== Convert SVGs to data (Chrome sometimes disappears SVG assets, so we convert them into blobs)"
+cat toolbar.css | grep '^\s*background.*asset/.*\.svg' | sed -e 's/.*url..//g' -e 's/svg.*/svg/g' | sort -u | while read SVG; do
+	sed -i '' -e "s~['\"]$SVG['\"]~$(cat "$SVG" | node_modules/svgo/bin/svgo --enable='removeViewBox,removeComments,removeUselessStrokeAndFill' -i - -o - --datauri=base64)~" target/toolbar.css
+done
+
+
+echo
+echo "== Package used assets"
+git ls-tree -r master --name-only | egrep '\.(js|html?|css|json)' | ( xargs -I {} egrep "asset/[^\"']*" target/{} || true ) | sed -e "s@.*\(asset/[^\"']*\).*@\1@" | sort -u | while read ASSET; do
+	mkdir -p "target/$(dirname "$ASSET")"
+	echo "$ASSET"
+	cp "$ASSET" "target/$ASSET"
+done
+
+
+echo
+echo "== Clean up CSS"
+git ls-tree -r master --name-only | egrep '\.css' | xargs -I {} node_modules/clean-css-cli/bin/cleancss --format beautify -o target/{} target/{}
+
+
+export BUILD_VERSION="$(cat manifest.json | grep '"version"' | sed -e 's/.*: "//' -e 's/".*//')"
+if [ ! "$(egrep 'heads/master$' .git/HEAD)" ]; then
+	export BUILD_VERSION="${BUILD_VERSION}$(cat .git/HEAD | sed -e 's@.*/@@g' -e 's/^/-beta-/g')"
+fi
+
+# Firefox
+echo
+echo "== Package Firefox"
+FFBUILD="artifact/StumbleBar Firefox $BUILD_VERSION.zip"
+rm -f "$FFBUILD"
+cd target
+zip -q -r "../$FFBUILD" .
+if [ "$PUSH_MOZILLA" ]; then
+	# It's okay if this fails. We expect it to fail.
+	web-ext sign --api-key=$AMO_JWT_ISSUER --api-secret=$AMO_JWT_SECRET --artifacts-dir=../artifact/ || true
+fi
+cd ..
+
+
+# Chrome
+echo
+echo "== Package Chrome"
+CHBUILD="artifact/StumbleBar Chrome $BUILD_VERSION.zip"
+rm -f "$CHBUILD"
+rm -rf ChromeBar
+cp -rp target ChromeBar
+cat manifest.json | pcregrep -v -M '"applications"(.|\n)*?},' > ChromeBar/manifest.json
+echo '2i
+  "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC7zdc2iM/A4FIj7dXfd5zH6xzk8JNaLoAbupMqY3OO6HGCeHWcN2O8IbCnbBBaw37GPobhkBu9HpHdLJ8d7h74j2/mhIMPqgh4zlps2ZErJ7MkGSCARbz3VPuWkRQDw4ZEUGWR0qwhPzfxD6elCoYlj2F0D9/hNhPVLtW4DzrM3QIDAQAB",
+.
+wq' | ed ChromeBar/manifest.json > /dev/null
+zip -q -r "$CHBUILD" ChromeBar
+if [ "$PUSH_CHROME" ]; then
+	#WEBSTORE_TOKEN="$(chrome-webstore-manager token --client_id $WEBSTORE_CLIENT_ID --client_secret $WEBSTORE_CLIENT_SECRET)"
+	WEBSTORE_TOKEN="$(chrome-webstore-manager refresh_token --client_id $WEBSTORE_CLIENT_ID --client_secret $WEBSTORE_CLIENT_SECRET --refresh_token $WEBSTORE_REFRESH_TOKEN)"
+	chrome-webstore-manager update  -t $WEBSTORE_TOKEN $WEBSTORE_EXTENSION_ID "$CHBUILD"
+	chrome-webstore-manager publish -t $WEBSTORE_TOKEN $WEBSTORE_EXTENSION_ID
+fi;
+
+
+# Opera
+echo
+echo "== Package Opera"
+OPBUILD="artifact/StumbleBar Opera $BUILD_VERSION.crx"
+rm -f "$OPBUILD"
+rm -rf OperaBar
+cp -rp target OperaBar
+cat manifest.json | pcregrep -v -M '"applications"(.|\n)*?},' > OperaBar/manifest.json
+cd OperaBar
+zip -q -r "../$OPBUILD" .
+cd ..
+
+
+# Edge
+echo
+echo "== Package Edge"
+IEBUILD="artifact/StumbleBar Edge $BUILD_VERSION.appx"
+rm -f "$IEBUILD"
+rm -rf EdgeBar
+mkdir EdgeBar
+cat manifest.json | pcregrep -v -M '"applications"(.|\n)*?},' > target/manifest.json
+node node_modules/manifoldjs/manifoldjs.js -l debug -p edgeextension -f edgeextension -m target/manifest.json -d EdgeBar/
+cp -rp asset/msedge/appxmanifest.xml EdgeBar/StumbleBar/edgeextension/manifest/
+cp -f asset/msedge/Assets/* EdgeBar/StumbleBar/edgeextension/manifest/Assets/
+sed -i -e "s~SUBSTITUTE-VERSION-HERE~${BUILD_VERSION}.0.0~" EdgeBar/StumbleBar/edgeextension/manifest/appxmanifest.xml
+#cat manifest.json | pcregrep -v -M '"applications"(.|\n)*?},' > EdgeBar/Extension/manifest.json
+cd EdgeBar/StumbleBar/edgeextension/manifest/Extension
+convert asset/Logo-128.png -resize 40x40 asset/Logo-40.png
+convert asset/Logo-128.png -resize 20x20 asset/Logo-20.png
+sed -i '' -e 's~\("32" *: *"asset\/Logo-128.png"\)~\1, "40" : "asset/Logo-40.png", "20" : "asset/Logo-20.png"~g' manifest.json
+cd ../../../../..
+node node_modules/manifoldjs/manifoldjs.js package -l debug -p edgeextension EdgeBar/StumbleBar/edgeextension/manifest/
+mv EdgeBar/StumbleBar/edgeextension/package/edgeExtension.appx "${IEBUILD}"
+
+echo
+echo 'Firefox build: "'"$FFBUILD"'"'
+echo 'Chrome  build: "'"$CHBUILD"'"'
+echo 'Opera   build: "'"$OPBUILD"'"'
+echo 'Edge    build: "'"$IEBUILD"'"'
+
+popd
