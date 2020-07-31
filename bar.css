@@ -1,0 +1,81 @@
+#discoverbar.fullscreen {
+	display: none !important;
+}
+
+@keyframes nodeInserted {
+	from {
+		outline-color: #fff;
+	}
+	to {
+		outline-color: #000;
+	}
+}
+
+@-moz-keyframes nodeInserted {
+	from {
+		outline-color: #fff;
+	}
+	to {
+		outline-color: #000;
+	}
+}
+
+@-webkit-keyframes nodeInserted {
+	from {
+		outline-color: #fff;
+	}
+	to {
+		outline-color: #000;
+	}
+}
+
+@-ms-keyframes nodeInserted {
+	from {
+		outline-color: #fff;
+	}
+	to {
+		outline-color: #000;
+	}
+}
+
+@-o-keyframes nodeInserted {
+	from {
+		outline-color: #fff;
+	}
+	to {
+		outline-color: #000;
+	}
+}
+
+BODY {
+	animation-duration: 0.01s;
+	-o-animation-duration: 0.01s;
+	-ms-animation-duration: 0.01s;
+	-moz-animation-duration: 0.01s;
+	-webkit-animation-duration: 0.01s;
+	animation-name: nodeInserted;
+	-o-animation-name: nodeInserted;
+	-ms-animation-name: nodeInserted;
+	-moz-animation-name: nodeInserted;
+	-webkit-animation-name: nodeInserted;
+}
+
+#discoverbar {
+	position:fixed;
+	bottom:0;
+	left:0;
+	display:none;
+	zoom:1.0;
+	width:288px;
+	height:90px;
+	z-index:2147483647;
+	border:0;
+	overflow:hidden;
+	/*
+	box-shadow: 0 0 16px -4px #000;
+	border: 1px solid #aaa;
+	border-radius:4px;
+	*/
+	transition: width 0.2s, height 0.2s;
+	padding: 0 !important;
+}
